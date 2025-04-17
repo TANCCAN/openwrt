@@ -1,0 +1,52 @@
+name: Compile OpenWrt for HiWiFi HC5962 (MT7621)
+
+on:
+  workflow_dispatch:  # 手动触发
+  push:
+    branches: [ main ]  # 推送到 main 分支时自动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set Up ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/*') }}
+          restore-keys: ${{ runner.os }}-ccache-
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y g++-multilib binutils-dev libgmp-dev libmpfr-dev libmpc-dev libisl-dev
+
+      - name: Configure OpenWrt
+        run: |
+          # 生成基础配置
+          make defconfig
+          # 添加 HiWiFi HC5962 设备支持（关键！）
+          echo 'CONFIG_TARGET_ramIPS=y' >> .config
+          echo 'CONFIG_TARGET_ramIPS_MEDIATEK_MT7621=y' >> .config
+          echo 'CONFIG_TARGET_ramIPS_SUBTARGET_HC5962=y' >> .config
+          # 可选：启用额外功能（如 SSH、WiFi）
+          echo 'CONFIG_PACKAGE_luci=y' >> .config
+          echo 'CONFIG_PACKAGE_kmod-mt7615=y' >> .config
+
+      - name: Build Firmware
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: |
+          make -j$(nproc) V=s  # V=s 显示详细编译日志
+          mkdir -p artifacts
+          mv bin/targets/ramips/mt7621/*.bin artifacts/
+          mv bin/targets/ramips/mt7621/*.trx artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-HC5962
+          path: artifacts/
